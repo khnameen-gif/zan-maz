@@ -162,60 +162,6 @@ const Celebration: React.FC<{ active: boolean }> = ({ active }) => {
   );
 };
 
-const VisualTimer: React.FC<{ seconds: number; best: number | null }> = ({ seconds, best }) => {
-  const radius = 22;
-  const circumference = 2 * Math.PI * radius;
-  
-  let progress = 0;
-  if (best && best > 0) {
-    progress = Math.min(seconds / best, 1);
-  } else {
-    progress = (seconds % 60) / 60;
-  }
-  
-  const offset = circumference - progress * circumference;
-  const isOverBest = best !== null && seconds > best;
-
-  return (
-    <div className="absolute top-4 left-4 flex items-center gap-3 bg-slate-950/40 backdrop-blur-md px-4 py-2 rounded-2xl border border-slate-700/50 shadow-2xl pointer-events-none z-10">
-      <div className="relative w-12 h-12 flex items-center justify-center">
-        <svg className="w-full h-full -rotate-90 drop-shadow-[0_0_8px_rgba(14,165,233,0.3)]">
-          <circle
-            cx="24"
-            cy="24"
-            r={radius}
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="4"
-            className="text-slate-800/80"
-          />
-          <circle
-            cx="24"
-            cy="24"
-            r={radius}
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="4"
-            strokeDasharray={circumference}
-            strokeDashoffset={offset}
-            strokeLinecap="round"
-            className={`${isOverBest ? 'text-rose-500' : 'text-sky-500'} transition-all duration-1000 ease-linear`}
-          />
-        </svg>
-        <div className="absolute inset-0 flex items-center justify-center">
-           <i className={`fa-solid fa-clock-rotate-left text-[10px] ${isOverBest ? 'text-rose-400' : 'text-sky-400 opacity-40'}`}></i>
-        </div>
-      </div>
-      <div className="flex flex-col">
-        <span className="text-[10px] uppercase font-black text-slate-500 leading-none mb-0.5 tracking-wider">Elapsed</span>
-        <span className={`text-lg font-mono font-bold leading-none ${isOverBest ? 'text-rose-400' : 'text-white'}`}>
-          {seconds}s
-        </span>
-      </div>
-    </div>
-  );
-};
-
 const MiniMaze: React.FC<{ level: Level }> = ({ level }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -277,7 +223,10 @@ const App: React.FC = () => {
     moves: 0,
     seconds: 0,
     level: 1,
-    bestSeconds: null
+    bestSeconds: null,
+    sessionMoves: 0,
+    sessionSeconds: 0,
+    levelsCleared: 0
   });
   const [controlMode, setControlMode] = useState<ControlMode>('buttons');
   const [isWon, setIsWon] = useState(false);
@@ -292,8 +241,38 @@ const App: React.FC = () => {
   const lastTiltMoveRef = useRef<number>(0);
   const animationFrameRef = useRef<number | null>(null);
   const sfx = useRef<ReturnType<typeof createSoundEngine> | null>(null);
+  const starFieldRef = useRef<{x: number, y: number, s: number, a: number}[]>([]);
+  const nebulaFieldRef = useRef<{x: number, y: number, r: number, c: string}[]>([]);
 
   const level = LEVELS[currentLevelIdx];
+
+  // Initialize Parallax Fields
+  useEffect(() => {
+    // Generate 100 micro-stars
+    const stars = [];
+    for (let i = 0; i < 120; i++) {
+      stars.push({
+        x: Math.random() * 2000,
+        y: Math.random() * 2000,
+        s: Math.random() * 1.5 + 0.5,
+        a: Math.random() * 0.4 + 0.1
+      });
+    }
+    starFieldRef.current = stars;
+
+    // Generate nebula orbs
+    const nebulae = [];
+    const colors = ['#0ea5e9', '#f43f5e', '#6366f1'];
+    for (let i = 0; i < 15; i++) {
+      nebulae.push({
+        x: Math.random() * 2000,
+        y: Math.random() * 2000,
+        r: Math.random() * 100 + 50,
+        c: colors[Math.floor(Math.random() * colors.length)]
+      });
+    }
+    nebulaFieldRef.current = nebulae;
+  }, []);
 
   // Initialize SFX engine on first user interaction
   useEffect(() => {
@@ -327,11 +306,18 @@ const App: React.FC = () => {
 
     setStats(prev => {
       const currentBest = prev.bestSeconds;
+      let newBest = currentBest;
       if (currentBest === null || prev.seconds < currentBest) {
         localStorage.setItem(`zenmaze_best_${level.id}`, prev.seconds.toString());
-        return { ...prev, bestSeconds: prev.seconds };
+        newBest = prev.seconds;
       }
-      return prev;
+      return { 
+        ...prev, 
+        bestSeconds: newBest,
+        sessionMoves: prev.sessionMoves + prev.moves,
+        sessionSeconds: prev.sessionSeconds + prev.seconds,
+        levelsCleared: prev.levelsCleared + 1
+      };
     });
   }, [level.id]);
 
@@ -500,9 +486,58 @@ const App: React.FC = () => {
     const offsetX = (rect.width - cols * cellSize) / 2;
     const offsetY = (rect.height - rows * cellSize) / 2;
 
-    ctx.clearRect(0, 0, rect.width, rect.height);
+    // Clear with Deep Background
+    ctx.fillStyle = '#020617';
+    ctx.fillRect(0, 0, rect.width, rect.height);
 
-    // Background Grid
+    // Normalized player pos for parallax (0 to 1)
+    const normX = playerPos.x / (cols || 1);
+    const normY = playerPos.y / (rows || 1);
+
+    // Draw Parallax Layer 1: Stars (Slowest)
+    const p1X = -normX * 20;
+    const p1Y = -normY * 20;
+    ctx.save();
+    starFieldRef.current.forEach(star => {
+      ctx.fillStyle = `rgba(148, 163, 184, ${star.a})`;
+      ctx.beginPath();
+      // Use modulo to wrap stars around the viewport
+      const sx = (star.x + p1X + 2000) % rect.width;
+      const sy = (star.y + p1Y + 2000) % rect.height;
+      ctx.arc(sx, sy, star.s, 0, Math.PI * 2);
+      ctx.fill();
+    });
+    ctx.restore();
+
+    // Draw Parallax Layer 2: Nebula Orbs (Medium)
+    const p2X = -normX * 60;
+    const p2Y = -normY * 60;
+    ctx.save();
+    nebulaFieldRef.current.forEach(orb => {
+      const gradient = ctx.createRadialGradient(
+        (orb.x + p2X + 2000) % rect.width,
+        (orb.y + p2Y + 2000) % rect.height,
+        0,
+        (orb.x + p2X + 2000) % rect.width,
+        (orb.y + p2Y + 2000) % rect.height,
+        orb.r
+      );
+      gradient.addColorStop(0, orb.c + '11'); // low alpha hex
+      gradient.addColorStop(1, 'transparent');
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.arc(
+        (orb.x + p2X + 2000) % rect.width,
+        (orb.y + p2Y + 2000) % rect.height,
+        orb.r,
+        0,
+        Math.PI * 2
+      );
+      ctx.fill();
+    });
+    ctx.restore();
+
+    // Background Grid Container
     ctx.fillStyle = '#0f172a';
     ctx.fillRect(offsetX, offsetY, cols * cellSize, rows * cellSize);
 
@@ -592,6 +627,9 @@ const App: React.FC = () => {
 
   const previewLevel = hoveredLevelIdx !== null ? LEVELS[hoveredLevelIdx] : LEVELS[currentLevelIdx];
 
+  // Helper for tilt indicator animation
+  const tiltIntensity = Math.sqrt(tiltData.x ** 2 + tiltData.y ** 2);
+
   return (
     <div className="flex flex-col h-screen max-w-2xl mx-auto p-4 md:p-6 overflow-hidden">
       {/* Celebration Animation Canvas */}
@@ -641,9 +679,6 @@ const App: React.FC = () => {
 
       {/* Main Game View */}
       <div className="flex-grow relative flex items-center justify-center bg-slate-900/30 rounded-3xl border border-slate-800/50 overflow-hidden mb-6">
-        {/* Visual Timer Overlay */}
-        <VisualTimer seconds={stats.seconds} best={stats.bestSeconds} />
-
         <canvas 
           ref={canvasRef} 
           className={`w-full h-full max-w-full max-h-full transition-all duration-500 ${isWon ? 'scale-90 opacity-40 blur-sm' : ''}`}
@@ -656,11 +691,35 @@ const App: React.FC = () => {
 
         {/* Tilt Indicator Overlay */}
         {controlMode === 'tilt' && (
-          <div className="absolute bottom-4 right-4 w-16 h-16 rounded-full border border-slate-700 bg-slate-900/50 flex items-center justify-center backdrop-blur-sm">
+          <div className="absolute bottom-4 right-4 w-20 h-20 rounded-full border border-slate-700/50 bg-slate-900/40 flex items-center justify-center backdrop-blur-md shadow-inner overflow-hidden">
+            {/* Directional Glow Field */}
             <div 
-              className="w-4 h-4 rounded-full bg-sky-500 shadow-lg shadow-sky-500/50 transition-transform duration-75"
-              style={{ transform: `translate(${tiltData.x * 20}px, ${tiltData.y * 20}px)` }}
+              className="absolute inset-0 opacity-30 transition-all duration-100 ease-out"
+              style={{ 
+                background: `radial-gradient(circle at ${50 + tiltData.x * 40}% ${50 + tiltData.y * 40}%, #0ea5e9 0%, transparent 70%)`,
+                transform: `scale(${1 + tiltIntensity * 0.5})`
+              }}
             />
+            
+            {/* Neutral Point Marker */}
+            <div className="absolute w-1 h-1 bg-slate-700 rounded-full opacity-50" />
+            
+            {/* Intensity Ripple */}
+            {tiltIntensity > 0.7 && (
+              <div className="absolute w-full h-full rounded-full border border-sky-500/30 animate-ping" />
+            )}
+
+            {/* Moving Ball */}
+            <div 
+              className="w-5 h-5 rounded-full bg-sky-500 transition-all duration-100 ease-out flex items-center justify-center"
+              style={{ 
+                transform: `translate(${tiltData.x * 28}px, ${tiltData.y * 28}px) scale(${1 + tiltIntensity * 0.3})`,
+                boxShadow: `0 0 ${15 + tiltIntensity * 20}px rgba(14, 165, 233, ${0.4 + tiltIntensity * 0.6})`
+              }}
+            >
+              {/* Ball Highlight */}
+              <div className="w-1.5 h-1.5 bg-sky-200 rounded-full opacity-80 -translate-x-1 -translate-y-1" />
+            </div>
           </div>
         )}
       </div>
@@ -738,36 +797,76 @@ const App: React.FC = () => {
       {/* Win Modal Overlay */}
       {isWon && (
         <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-md flex items-center justify-center z-50 p-6">
-          <div className="bg-slate-900 border border-slate-800 w-full max-sm:w-full max-w-sm rounded-[2.5rem] p-8 text-center shadow-2xl animate-in fade-in zoom-in duration-300">
-            <div className="w-20 h-20 bg-sky-500/20 text-sky-500 rounded-full flex items-center justify-center mx-auto mb-6">
-              <i className="fa-solid fa-trophy text-4xl animate-bounce"></i>
+          <div className="bg-slate-900 border border-slate-800 w-full max-sm:w-full max-w-md rounded-[2.5rem] p-8 shadow-2xl animate-in fade-in zoom-in duration-300">
+            <div className="w-16 h-16 bg-sky-500/20 text-sky-500 rounded-full flex items-center justify-center mx-auto mb-4">
+              <i className="fa-solid fa-trophy text-3xl animate-bounce"></i>
             </div>
-            <h2 className="text-3xl font-black text-white mb-2">SOLVED!</h2>
-            <p className="text-slate-400 mb-8 font-medium">You completed level {stats.level} with grace.</p>
+            <h2 className="text-3xl font-black text-white mb-1 text-center">SOLVED!</h2>
+            <p className="text-slate-500 mb-6 font-medium text-center">Maze {stats.level} complete.</p>
             
-            <div className="grid grid-cols-2 gap-4 mb-8">
-              <div className="bg-slate-800/50 p-4 rounded-3xl">
-                <p className="text-[10px] uppercase font-bold text-slate-500 mb-1">Total Time</p>
-                <p className="text-xl font-mono font-bold text-white">{stats.seconds}s</p>
+            {/* Level Comparison */}
+            <div className="grid grid-cols-2 gap-3 mb-6">
+              <div className="bg-slate-800/50 p-4 rounded-3xl border border-slate-700/30 flex flex-col items-center">
+                <p className="text-[9px] uppercase font-black text-slate-500 mb-1 tracking-widest">Time Spent</p>
+                <div className="flex items-baseline gap-2">
+                  <p className="text-2xl font-mono font-bold text-white">{stats.seconds}s</p>
+                  {stats.bestSeconds && stats.seconds <= stats.bestSeconds && (
+                    <span className="text-[9px] font-black text-emerald-400 bg-emerald-400/10 px-1.5 py-0.5 rounded uppercase">Best!</span>
+                  )}
+                </div>
+                <p className="text-[10px] text-slate-500 mt-1">Record: {stats.bestSeconds || '--'}s</p>
               </div>
-              <div className="bg-slate-800/50 p-4 rounded-3xl">
-                <p className="text-[10px] uppercase font-bold text-slate-500 mb-1">Total Moves</p>
-                <p className="text-xl font-mono font-bold text-white">{stats.moves}</p>
+              <div className="bg-slate-800/50 p-4 rounded-3xl border border-slate-700/30 flex flex-col items-center">
+                <p className="text-[9px] uppercase font-black text-slate-500 mb-1 tracking-widest">Moves Made</p>
+                <p className="text-2xl font-mono font-bold text-white">{stats.moves}</p>
+                <p className="text-[10px] text-slate-500 mt-1">Efficiency Level</p>
               </div>
+            </div>
+
+            {/* Session Stats Section */}
+            <div className="bg-slate-950/50 rounded-3xl p-5 mb-8 border border-slate-800/50">
+               <h3 className="text-[10px] uppercase font-black text-slate-400 mb-3 tracking-widest flex items-center gap-2">
+                 <i className="fa-solid fa-chart-line"></i> Session Summary
+               </h3>
+               <div className="grid grid-cols-3 gap-2">
+                 <div className="flex flex-col">
+                   <span className="text-[9px] text-slate-500 uppercase font-bold">Solved</span>
+                   <span className="text-sm font-bold text-slate-200">{stats.levelsCleared}</span>
+                 </div>
+                 <div className="flex flex-col">
+                   <span className="text-[9px] text-slate-500 uppercase font-bold">Total Time</span>
+                   <span className="text-sm font-bold text-slate-200">{stats.sessionSeconds}s</span>
+                 </div>
+                 <div className="flex flex-col">
+                   <span className="text-[9px] text-slate-500 uppercase font-bold">Total Moves</span>
+                   <span className="text-sm font-bold text-slate-200">{stats.sessionMoves}</span>
+                 </div>
+               </div>
+               
+               {/* Global Progress Bar */}
+               <div className="mt-4">
+                 <div className="flex justify-between text-[9px] font-bold text-slate-500 uppercase mb-1">
+                   <span>Campaign Progress</span>
+                   <span>{stats.level} / 500</span>
+                 </div>
+                 <div className="w-full h-1 bg-slate-800 rounded-full overflow-hidden">
+                    <div className="h-full bg-sky-500 transition-all duration-1000" style={{ width: `${(stats.level / 500) * 100}%` }} />
+                 </div>
+               </div>
             </div>
 
             <div className="flex flex-col gap-3">
               <button 
                 onClick={() => { sfx.current?.click(); resetLevel(currentLevelIdx + 1); }}
-                className="w-full bg-sky-500 hover:bg-sky-400 text-white font-black py-4 rounded-2xl shadow-xl shadow-sky-500/30 transition-all active:scale-95"
+                className="w-full bg-sky-500 hover:bg-sky-400 text-white font-black py-4 rounded-2xl shadow-xl shadow-sky-500/30 transition-all active:scale-95 flex items-center justify-center gap-3"
               >
-                NEXT MAZE
+                NEXT MAZE <i className="fa-solid fa-arrow-right"></i>
               </button>
               <button 
                 onClick={() => { sfx.current?.click(); setIsWon(false); }}
                 className="w-full bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold py-4 rounded-2xl transition-all"
               >
-                REPLAY
+                REPLAY THIS LEVEL
               </button>
             </div>
           </div>

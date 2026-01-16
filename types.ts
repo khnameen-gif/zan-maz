@@ -17,6 +17,9 @@ export interface GameStats {
   seconds: number;
   level: number;
   bestSeconds: number | null;
+  sessionMoves: number;
+  sessionSeconds: number;
+  levelsCleared: number;
 }
 
 export type ControlMode = 'tilt' | 'buttons' | 'keys';
