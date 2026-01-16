@@ -1,0 +1,7 @@
+{
+  "name": "Copy of Zen Maze: Tilt Quest",
+  "description": "A sleek, responsive maze game featuring smooth tilt controls, multiple levels, and high-score tracking.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
