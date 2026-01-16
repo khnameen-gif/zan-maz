@@ -1,8 +1,7 @@
 
-import { Point } from './types';
+import { Point } from './types.ts';
 
 export function generateMaze(width: number, height: number): number[][] {
-  // Ensure dimensions are odd for the grid-based wall algorithm
   const w = width % 2 === 0 ? width + 1 : width;
   const h = height % 2 === 0 ? height + 1 : height;
 

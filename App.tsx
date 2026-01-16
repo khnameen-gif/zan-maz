@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Point, Level, GameStats, ControlMode } from './types';
-import { LEVELS } from './levels';
+import { Point, Level, GameStats, ControlMode } from './types.ts';
+import { LEVELS } from './levels.ts';
 
 // Procedural Sound Engine
 const createSoundEngine = () => {
@@ -248,7 +248,6 @@ const App: React.FC = () => {
 
   // Initialize Parallax Fields
   useEffect(() => {
-    // Generate 100 micro-stars
     const stars = [];
     for (let i = 0; i < 120; i++) {
       stars.push({
@@ -260,7 +259,6 @@ const App: React.FC = () => {
     }
     starFieldRef.current = stars;
 
-    // Generate nebula orbs
     const nebulae = [];
     const colors = ['#0ea5e9', '#f43f5e', '#6366f1'];
     for (let i = 0; i < 15; i++) {
@@ -274,7 +272,7 @@ const App: React.FC = () => {
     nebulaFieldRef.current = nebulae;
   }, []);
 
-  // Initialize SFX engine on first user interaction
+  // Initialize SFX
   useEffect(() => {
     const initAudio = () => {
       if (!sfx.current) sfx.current = createSoundEngine();
@@ -311,6 +309,16 @@ const App: React.FC = () => {
         localStorage.setItem(`zenmaze_best_${level.id}`, prev.seconds.toString());
         newBest = prev.seconds;
       }
+
+      // Career Stat Persistence
+      const careerMoves = parseInt(localStorage.getItem('zenmaze_total_moves') || '0', 10) + prev.moves;
+      const careerSeconds = parseInt(localStorage.getItem('zenmaze_total_seconds') || '0', 10) + prev.seconds;
+      const careerCleared = parseInt(localStorage.getItem('zenmaze_total_cleared') || '0', 10) + 1;
+      
+      localStorage.setItem('zenmaze_total_moves', careerMoves.toString());
+      localStorage.setItem('zenmaze_total_seconds', careerSeconds.toString());
+      localStorage.setItem('zenmaze_total_cleared', careerCleared.toString());
+
       return { 
         ...prev, 
         bestSeconds: newBest,
@@ -349,7 +357,7 @@ const App: React.FC = () => {
       if (timerRef.current) clearInterval(timerRef.current);
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
     };
-  }, []); // Only run once on mount
+  }, []);
 
   const move = useCallback((dx: number, dy: number) => {
     if (isWon) return;
@@ -399,7 +407,6 @@ const App: React.FC = () => {
     });
   }, [isWon]);
 
-  // Keyboard controls
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (showLevelSelect) return;
@@ -419,20 +426,18 @@ const App: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [move, undo, showLevelSelect]);
 
-  // Tilt controls handler
   useEffect(() => {
     if (controlMode !== 'tilt') return;
 
     const handleOrientation = (e: DeviceOrientationEvent) => {
-      const beta = e.beta || 0;  // -180 to 180 (forward/backward)
-      const gamma = e.gamma || 0; // -90 to 90 (left/right)
-      
+      const beta = e.beta || 0;
+      const gamma = e.gamma || 0;
       const x = Math.max(-1, Math.min(1, gamma / 30));
-      const y = Math.max(-1, Math.min(1, (beta - 45) / 30)); // 45deg is neutral tilt
+      const y = Math.max(-1, Math.min(1, (beta - 45) / 30));
       setTiltData({ x, y });
 
       const now = Date.now();
-      if (now - lastTiltMoveRef.current > 180) { // Threshold for tilt movement speed
+      if (now - lastTiltMoveRef.current > 180) {
         const threshold = 0.4;
         if (Math.abs(x) > threshold || Math.abs(y) > threshold) {
           if (Math.abs(x) > Math.abs(y)) {
@@ -460,7 +465,6 @@ const App: React.FC = () => {
     return () => window.removeEventListener('deviceorientation', handleOrientation);
   }, [controlMode, move]);
 
-  // Rendering
   const render = useCallback((time: number) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -470,8 +474,6 @@ const App: React.FC = () => {
     const rows = level.grid.length;
     const cols = level.grid[0].length;
     const padding = 10;
-    
-    // Scale canvas to device pixel ratio
     const dpr = window.devicePixelRatio || 1;
     const rect = canvas.getBoundingClientRect();
     canvas.width = rect.width * dpr;
@@ -486,22 +488,18 @@ const App: React.FC = () => {
     const offsetX = (rect.width - cols * cellSize) / 2;
     const offsetY = (rect.height - rows * cellSize) / 2;
 
-    // Clear with Deep Background
     ctx.fillStyle = '#020617';
     ctx.fillRect(0, 0, rect.width, rect.height);
 
-    // Normalized player pos for parallax (0 to 1)
     const normX = playerPos.x / (cols || 1);
     const normY = playerPos.y / (rows || 1);
 
-    // Draw Parallax Layer 1: Stars (Slowest)
     const p1X = -normX * 20;
     const p1Y = -normY * 20;
     ctx.save();
     starFieldRef.current.forEach(star => {
       ctx.fillStyle = `rgba(148, 163, 184, ${star.a})`;
       ctx.beginPath();
-      // Use modulo to wrap stars around the viewport
       const sx = (star.x + p1X + 2000) % rect.width;
       const sy = (star.y + p1Y + 2000) % rect.height;
       ctx.arc(sx, sy, star.s, 0, Math.PI * 2);
@@ -509,7 +507,6 @@ const App: React.FC = () => {
     });
     ctx.restore();
 
-    // Draw Parallax Layer 2: Nebula Orbs (Medium)
     const p2X = -normX * 60;
     const p2Y = -normY * 60;
     ctx.save();
@@ -522,7 +519,7 @@ const App: React.FC = () => {
         (orb.y + p2Y + 2000) % rect.height,
         orb.r
       );
-      gradient.addColorStop(0, orb.c + '11'); // low alpha hex
+      gradient.addColorStop(0, orb.c + '11');
       gradient.addColorStop(1, 'transparent');
       ctx.fillStyle = gradient;
       ctx.beginPath();
@@ -537,11 +534,9 @@ const App: React.FC = () => {
     });
     ctx.restore();
 
-    // Background Grid Container
     ctx.fillStyle = '#0f172a';
     ctx.fillRect(offsetX, offsetY, cols * cellSize, rows * cellSize);
 
-    // Draw Walls
     level.grid.forEach((row, y) => {
       row.forEach((cell, x) => {
         if (cell === 1) {
@@ -554,8 +549,6 @@ const App: React.FC = () => {
     });
 
     const pulse = (Math.sin(time / 400) + 1) / 2;
-
-    // Draw Exit
     const exitX = offsetX + level.exit.x * cellSize + cellSize / 2;
     const exitY = offsetY + level.exit.y * cellSize + cellSize / 2;
     
@@ -572,7 +565,6 @@ const App: React.FC = () => {
     ctx.fill();
     ctx.restore();
 
-    // Draw Player
     const pX = offsetX + playerPos.x * cellSize + cellSize / 2;
     const pY = offsetY + playerPos.y * cellSize + cellSize / 2;
     
@@ -583,8 +575,6 @@ const App: React.FC = () => {
     ctx.beginPath();
     ctx.arc(pX, pY, cellSize / 3, 0, Math.PI * 2);
     ctx.fill();
-    
-    // Player inner glow
     ctx.fillStyle = '#7dd3fc';
     ctx.beginPath();
     ctx.arc(pX - cellSize/10, pY - cellSize/10, cellSize / 8, 0, Math.PI * 2);
@@ -601,21 +591,6 @@ const App: React.FC = () => {
     };
   }, [render]);
 
-  const handleLevelSelectOpen = () => {
-    sfx.current?.click();
-    setShowLevelSelect(true);
-  };
-
-  const handleControlModeToggle = () => {
-    sfx.current?.click();
-    setControlMode(controlMode === 'buttons' ? 'tilt' : 'buttons');
-  };
-
-  const handleReset = () => {
-    sfx.current?.click();
-    resetLevel(currentLevelIdx);
-  };
-
   const filteredLevels = LEVELS.map((l, i) => ({ ...l, index: i }))
     .filter(l => {
       const matchesDiff = difficultyFilter === null || l.difficulty === difficultyFilter;
@@ -623,19 +598,17 @@ const App: React.FC = () => {
       return matchesDiff && matchesSearch;
     });
 
-  const difficultyOptions = ['Easy', 'Medium', 'Hard', 'Expert'];
-
-  const previewLevel = hoveredLevelIdx !== null ? LEVELS[hoveredLevelIdx] : LEVELS[currentLevelIdx];
-
-  // Helper for tilt indicator animation
   const tiltIntensity = Math.sqrt(tiltData.x ** 2 + tiltData.y ** 2);
+
+  // FIX: Define previewLevel based on hover state or current level
+  const previewLevel = hoveredLevelIdx !== null ? LEVELS[hoveredLevelIdx] : level;
+  // FIX: Define difficultyOptions array
+  const difficultyOptions: ('Easy' | 'Medium' | 'Hard' | 'Expert')[] = ['Easy', 'Medium', 'Hard', 'Expert'];
 
   return (
     <div className="flex flex-col h-screen max-w-2xl mx-auto p-4 md:p-6 overflow-hidden">
-      {/* Celebration Animation Canvas */}
       <Celebration active={isWon} />
 
-      {/* Header & Progress */}
       <div className="mb-6">
         <div className="flex justify-between items-end mb-2">
           <h1 className="text-2xl font-bold tracking-tight text-sky-400">
@@ -653,7 +626,6 @@ const App: React.FC = () => {
         </div>
       </div>
 
-      {/* Stats Cards */}
       <div className="grid grid-cols-4 gap-3 mb-6">
         <div className="bg-slate-900/50 border border-slate-800 p-3 rounded-2xl flex flex-col items-center">
           <span className="text-[10px] text-slate-500 uppercase font-bold mb-1">Time</span>
@@ -677,22 +649,18 @@ const App: React.FC = () => {
         </div>
       </div>
 
-      {/* Main Game View */}
       <div className="flex-grow relative flex items-center justify-center bg-slate-900/30 rounded-3xl border border-slate-800/50 overflow-hidden mb-6">
         <canvas 
           ref={canvasRef} 
           className={`w-full h-full max-w-full max-h-full transition-all duration-500 ${isWon ? 'scale-90 opacity-40 blur-sm' : ''}`}
         />
 
-        {/* Victory Flash */}
         {isWon && (
           <div className="absolute inset-0 bg-white/10 animate-pulse pointer-events-none rounded-3xl" />
         )}
 
-        {/* Tilt Indicator Overlay */}
         {controlMode === 'tilt' && (
           <div className="absolute bottom-4 right-4 w-20 h-20 rounded-full border border-slate-700/50 bg-slate-900/40 flex items-center justify-center backdrop-blur-md shadow-inner overflow-hidden">
-            {/* Directional Glow Field */}
             <div 
               className="absolute inset-0 opacity-30 transition-all duration-100 ease-out"
               style={{ 
@@ -700,16 +668,10 @@ const App: React.FC = () => {
                 transform: `scale(${1 + tiltIntensity * 0.5})`
               }}
             />
-            
-            {/* Neutral Point Marker */}
             <div className="absolute w-1 h-1 bg-slate-700 rounded-full opacity-50" />
-            
-            {/* Intensity Ripple */}
             {tiltIntensity > 0.7 && (
               <div className="absolute w-full h-full rounded-full border border-sky-500/30 animate-ping" />
             )}
-
-            {/* Moving Ball */}
             <div 
               className="w-5 h-5 rounded-full bg-sky-500 transition-all duration-100 ease-out flex items-center justify-center"
               style={{ 
@@ -717,19 +679,16 @@ const App: React.FC = () => {
                 boxShadow: `0 0 ${15 + tiltIntensity * 20}px rgba(14, 165, 233, ${0.4 + tiltIntensity * 0.6})`
               }}
             >
-              {/* Ball Highlight */}
               <div className="w-1.5 h-1.5 bg-sky-200 rounded-full opacity-80 -translate-x-1 -translate-y-1" />
             </div>
           </div>
         )}
       </div>
 
-      {/* Controls Bar */}
       <div className="flex gap-4 items-center mb-6">
         <button 
-          onClick={handleLevelSelectOpen}
+          onClick={() => { sfx.current?.click(); setShowLevelSelect(true); }}
           className="bg-slate-800 hover:bg-slate-700 w-14 h-14 rounded-2xl flex items-center justify-center transition-colors shadow-lg"
-          title="Level Select"
         >
           <i className="fa-solid fa-list-ul text-slate-300"></i>
         </button>
@@ -745,13 +704,13 @@ const App: React.FC = () => {
             <i className="fa-solid fa-rotate-left"></i> Undo
           </button>
           <button 
-            onClick={handleReset}
+            onClick={() => { sfx.current?.click(); resetLevel(currentLevelIdx); }}
             className="bg-slate-800 hover:bg-slate-700 rounded-2xl font-bold text-xs uppercase tracking-widest text-slate-300 flex items-center justify-center gap-2 shadow-lg"
           >
             <i className="fa-solid fa-rotate-right"></i> Reset
           </button>
           <button 
-            onClick={handleControlModeToggle}
+            onClick={() => { sfx.current?.click(); setControlMode(controlMode === 'buttons' ? 'tilt' : 'buttons'); }}
             className={`rounded-2xl font-bold text-xs uppercase tracking-widest flex items-center justify-center gap-2 transition-all ${
               controlMode === 'tilt' ? 'bg-sky-500 text-white shadow-xl shadow-sky-500/30' : 'bg-slate-800 text-slate-300 shadow-lg'
             }`}
@@ -762,33 +721,20 @@ const App: React.FC = () => {
         </div>
       </div>
 
-      {/* Directional Buttons (Visible whenever in 'buttons' mode) */}
       {controlMode === 'buttons' && (
         <div className="grid grid-cols-3 gap-3 w-56 mx-auto pb-4 transition-all animate-in fade-in zoom-in duration-200">
           <div />
-          <button 
-            onClick={() => move(0, -1)} 
-            className="w-16 h-16 bg-slate-800 active:bg-sky-600 rounded-2xl flex items-center justify-center text-2xl shadow-xl border border-slate-700 active:scale-90 transition-all"
-          >
+          <button onClick={() => move(0, -1)} className="w-16 h-16 bg-slate-800 active:bg-sky-600 rounded-2xl flex items-center justify-center text-2xl shadow-xl border border-slate-700 active:scale-90 transition-all">
             <i className="fa-solid fa-chevron-up"></i>
           </button>
           <div />
-          <button 
-            onClick={() => move(-1, 0)} 
-            className="w-16 h-16 bg-slate-800 active:bg-sky-600 rounded-2xl flex items-center justify-center text-2xl shadow-xl border border-slate-700 active:scale-90 transition-all"
-          >
+          <button onClick={() => move(-1, 0)} className="w-16 h-16 bg-slate-800 active:bg-sky-600 rounded-2xl flex items-center justify-center text-2xl shadow-xl border border-slate-700 active:scale-90 transition-all">
             <i className="fa-solid fa-chevron-left"></i>
           </button>
-          <button 
-            onClick={() => move(0, 1)} 
-            className="w-16 h-16 bg-slate-800 active:bg-sky-600 rounded-2xl flex items-center justify-center text-2xl shadow-xl border border-slate-700 active:scale-90 transition-all"
-          >
+          <button onClick={() => move(0, 1)} className="w-16 h-16 bg-slate-800 active:bg-sky-600 rounded-2xl flex items-center justify-center text-2xl shadow-xl border border-slate-700 active:scale-90 transition-all">
             <i className="fa-solid fa-chevron-down"></i>
           </button>
-          <button 
-            onClick={() => move(1, 0)} 
-            className="w-16 h-16 bg-slate-800 active:bg-sky-600 rounded-2xl flex items-center justify-center text-2xl shadow-xl border border-slate-700 active:scale-90 transition-all"
-          >
+          <button onClick={() => move(1, 0)} className="w-16 h-16 bg-slate-800 active:bg-sky-600 rounded-2xl flex items-center justify-center text-2xl shadow-xl border border-slate-700 active:scale-90 transition-all">
             <i className="fa-solid fa-chevron-right"></i>
           </button>
         </div>
@@ -796,63 +742,56 @@ const App: React.FC = () => {
 
       {/* Win Modal Overlay */}
       {isWon && (
-        <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-md flex items-center justify-center z-50 p-6">
-          <div className="bg-slate-900 border border-slate-800 w-full max-sm:w-full max-w-md rounded-[2.5rem] p-8 shadow-2xl animate-in fade-in zoom-in duration-300">
-            <div className="w-16 h-16 bg-sky-500/20 text-sky-500 rounded-full flex items-center justify-center mx-auto mb-4">
-              <i className="fa-solid fa-trophy text-3xl animate-bounce"></i>
+        <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-md flex items-center justify-center z-50 p-4 md:p-6">
+          <div className="bg-slate-900 border border-slate-800 w-full max-w-xl rounded-[2.5rem] p-6 md:p-8 shadow-2xl animate-in fade-in zoom-in duration-300">
+            <div className="w-14 h-14 bg-sky-500/20 text-sky-500 rounded-full flex items-center justify-center mx-auto mb-4">
+              <i className="fa-solid fa-trophy text-2xl animate-bounce"></i>
             </div>
-            <h2 className="text-3xl font-black text-white mb-1 text-center">SOLVED!</h2>
-            <p className="text-slate-500 mb-6 font-medium text-center">Maze {stats.level} complete.</p>
+            <h2 className="text-2xl md:text-3xl font-black text-white mb-1 text-center uppercase tracking-tight">Level Complete!</h2>
+            <p className="text-slate-500 mb-6 font-medium text-center">Mastered Maze {stats.level}</p>
             
-            {/* Level Comparison */}
-            <div className="grid grid-cols-2 gap-3 mb-6">
-              <div className="bg-slate-800/50 p-4 rounded-3xl border border-slate-700/30 flex flex-col items-center">
-                <p className="text-[9px] uppercase font-black text-slate-500 mb-1 tracking-widest">Time Spent</p>
-                <div className="flex items-baseline gap-2">
-                  <p className="text-2xl font-mono font-bold text-white">{stats.seconds}s</p>
-                  {stats.bestSeconds && stats.seconds <= stats.bestSeconds && (
-                    <span className="text-[9px] font-black text-emerald-400 bg-emerald-400/10 px-1.5 py-0.5 rounded uppercase">Best!</span>
-                  )}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
+              {/* CURRENT MAZE */}
+              <div className="bg-slate-800/40 p-4 rounded-3xl border border-slate-700/20">
+                <p className="text-[10px] uppercase font-black text-sky-500 mb-2 tracking-widest text-center">This Maze</p>
+                <div className="flex justify-between items-center mb-1">
+                  <span className="text-[11px] text-slate-400 font-bold uppercase">Time</span>
+                  <span className="text-sm font-mono font-bold text-white">{stats.seconds}s</span>
                 </div>
-                <p className="text-[10px] text-slate-500 mt-1">Record: {stats.bestSeconds || '--'}s</p>
+                <div className="flex justify-between items-center">
+                  <span className="text-[11px] text-slate-400 font-bold uppercase">Moves</span>
+                  <span className="text-sm font-mono font-bold text-white">{stats.moves}</span>
+                </div>
+                {stats.bestSeconds && stats.seconds <= stats.bestSeconds && (
+                    <div className="mt-2 text-[10px] font-black text-emerald-400 bg-emerald-400/10 py-1 text-center rounded-full border border-emerald-400/20 uppercase">New Record!</div>
+                )}
               </div>
-              <div className="bg-slate-800/50 p-4 rounded-3xl border border-slate-700/30 flex flex-col items-center">
-                <p className="text-[9px] uppercase font-black text-slate-500 mb-1 tracking-widest">Moves Made</p>
-                <p className="text-2xl font-mono font-bold text-white">{stats.moves}</p>
-                <p className="text-[10px] text-slate-500 mt-1">Efficiency Level</p>
-              </div>
-            </div>
 
-            {/* Session Stats Section */}
-            <div className="bg-slate-950/50 rounded-3xl p-5 mb-8 border border-slate-800/50">
-               <h3 className="text-[10px] uppercase font-black text-slate-400 mb-3 tracking-widest flex items-center gap-2">
-                 <i className="fa-solid fa-chart-line"></i> Session Summary
-               </h3>
-               <div className="grid grid-cols-3 gap-2">
-                 <div className="flex flex-col">
-                   <span className="text-[9px] text-slate-500 uppercase font-bold">Solved</span>
-                   <span className="text-sm font-bold text-slate-200">{stats.levelsCleared}</span>
-                 </div>
-                 <div className="flex flex-col">
-                   <span className="text-[9px] text-slate-500 uppercase font-bold">Total Time</span>
-                   <span className="text-sm font-bold text-slate-200">{stats.sessionSeconds}s</span>
-                 </div>
-                 <div className="flex flex-col">
-                   <span className="text-[9px] text-slate-500 uppercase font-bold">Total Moves</span>
-                   <span className="text-sm font-bold text-slate-200">{stats.sessionMoves}</span>
-                 </div>
-               </div>
-               
-               {/* Global Progress Bar */}
-               <div className="mt-4">
-                 <div className="flex justify-between text-[9px] font-bold text-slate-500 uppercase mb-1">
-                   <span>Campaign Progress</span>
-                   <span>{stats.level} / 500</span>
-                 </div>
-                 <div className="w-full h-1 bg-slate-800 rounded-full overflow-hidden">
-                    <div className="h-full bg-sky-500 transition-all duration-1000" style={{ width: `${(stats.level / 500) * 100}%` }} />
-                 </div>
-               </div>
+              {/* SESSION STATS */}
+              <div className="bg-slate-800/40 p-4 rounded-3xl border border-slate-700/20">
+                <p className="text-[10px] uppercase font-black text-slate-400 mb-2 tracking-widest text-center">Session</p>
+                <div className="flex justify-between items-center mb-1">
+                  <span className="text-[11px] text-slate-500 font-bold uppercase">Solved</span>
+                  <span className="text-sm font-mono font-bold text-slate-200">{stats.levelsCleared}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-[11px] text-slate-500 font-bold uppercase">Time</span>
+                  <span className="text-sm font-mono font-bold text-slate-200">{stats.sessionSeconds}s</span>
+                </div>
+              </div>
+
+              {/* CAREER STATS */}
+              <div className="bg-slate-950/50 p-4 rounded-3xl border border-slate-800/50">
+                <p className="text-[10px] uppercase font-black text-amber-500 mb-2 tracking-widest text-center">Career</p>
+                <div className="flex justify-between items-center mb-1">
+                  <span className="text-[11px] text-slate-500 font-bold uppercase">Total Time</span>
+                  <span className="text-sm font-mono font-bold text-slate-300">{localStorage.getItem('zenmaze_total_seconds') || 0}s</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-[11px] text-slate-500 font-bold uppercase">Total Moves</span>
+                  <span className="text-sm font-mono font-bold text-slate-300">{localStorage.getItem('zenmaze_total_moves') || 0}</span>
+                </div>
+              </div>
             </div>
 
             <div className="flex flex-col gap-3">
@@ -873,18 +812,16 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {/* Level Select Modal */}
       {showLevelSelect && (
         <div className="fixed inset-0 bg-slate-950/95 backdrop-blur-xl flex flex-col z-50 animate-in slide-in-from-bottom duration-300">
           <div className="p-6 flex flex-col border-b border-slate-800">
             <div className="flex justify-between items-center mb-6">
-              <h2 className="text-xl font-bold tracking-tight">SELECT LEVEL</h2>
+              <h2 className="text-xl font-bold tracking-tight uppercase">Select Maze</h2>
               <button onClick={() => { sfx.current?.click(); setShowLevelSelect(false); }} className="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center">
                 <i className="fa-solid fa-xmark"></i>
               </button>
             </div>
             
-            {/* Preview Area */}
             <div className="mb-6 flex gap-6 items-center bg-slate-900/40 p-4 rounded-3xl border border-slate-800/50">
               <MiniMaze level={previewLevel} />
               <div className="flex-grow">
@@ -908,7 +845,7 @@ const App: React.FC = () => {
                     <i className="fa-solid fa-star text-[10px] text-amber-500"></i>
                     <span className="text-xs font-medium">
                       {localStorage.getItem(`zenmaze_best_${previewLevel.id}`) 
-                        ? `Personal Best: ${localStorage.getItem(`zenmaze_best_${previewLevel.id}`)}s` 
+                        ? `Best: ${localStorage.getItem(`zenmaze_best_${previewLevel.id}`)}s` 
                         : 'No records yet'}
                     </span>
                   </div>
@@ -916,27 +853,17 @@ const App: React.FC = () => {
               </div>
             </div>
 
-            {/* Search Bar */}
             <div className="relative mb-6">
               <i className="fa-solid fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-slate-500"></i>
               <input 
                 type="number"
-                placeholder="Find level by ID..."
+                placeholder="Maze ID..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full bg-slate-900 border border-slate-800 rounded-2xl py-3.5 pl-11 pr-12 text-slate-100 placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-sky-500/50 transition-all"
               />
-              {searchQuery && (
-                <button 
-                  onClick={() => { sfx.current?.click(); setSearchQuery(''); }}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 w-6 h-6 bg-slate-800 rounded-full flex items-center justify-center text-slate-400 hover:text-white"
-                >
-                  <i className="fa-solid fa-xmark text-[10px]"></i>
-                </button>
-              )}
             </div>
             
-            {/* Filters */}
             <div className="flex flex-wrap gap-2">
               <button
                 onClick={() => { sfx.current?.click(); setDifficultyFilter(null); }}
@@ -984,11 +911,8 @@ const App: React.FC = () => {
               </div>
             ) : (
               <div className="h-full flex flex-col items-center justify-center text-slate-600">
-                <div className="w-16 h-16 bg-slate-900/50 rounded-full flex items-center justify-center mb-4">
-                  <i className="fa-solid fa-magnifying-glass text-2xl opacity-20"></i>
-                </div>
-                <p className="font-medium">No levels found.</p>
-                <p className="text-sm opacity-60">Try a different search or filter.</p>
+                <i className="fa-solid fa-ghost text-4xl mb-2 opacity-20"></i>
+                <p className="font-medium">No results found.</p>
               </div>
             )}
           </div>
