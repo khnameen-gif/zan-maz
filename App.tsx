@@ -53,6 +53,115 @@ const createSoundEngine = () => {
   };
 };
 
+const Celebration: React.FC<{ active: boolean }> = ({ active }) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const particles = useRef<any[]>([]);
+
+  useEffect(() => {
+    if (!active) {
+      particles.current = [];
+      return;
+    }
+
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const resize = () => {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    };
+    window.addEventListener('resize', resize);
+    resize();
+
+    // Create initial burst
+    const colors = ['#0ea5e9', '#f43f5e', '#f59e0b', '#10b981'];
+    for (let i = 0; i < 150; i++) {
+      particles.current.push({
+        x: canvas.width / 2,
+        y: canvas.height / 2,
+        vx: (Math.random() - 0.5) * 20,
+        vy: (Math.random() - 0.7) * 25,
+        size: Math.random() * 8 + 4,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        rotation: Math.random() * 360,
+        rotationSpeed: (Math.random() - 0.5) * 10,
+        gravity: 0.45,
+        drag: 0.98,
+        type: Math.random() > 0.5 ? 'square' : 'circle'
+      });
+    }
+
+    let animationFrame: number;
+    const animate = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      
+      particles.current.forEach((p, i) => {
+        p.vx *= p.drag;
+        p.vy *= p.drag;
+        p.vy += p.gravity;
+        p.x += p.vx;
+        p.y += p.vy;
+        p.rotation += p.rotationSpeed;
+
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate((p.rotation * Math.PI) / 180);
+        ctx.fillStyle = p.color;
+        ctx.globalAlpha = Math.max(0, 1 - (p.y / canvas.height));
+        
+        if (p.type === 'square') {
+          ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size);
+        } else {
+          ctx.beginPath();
+          ctx.arc(0, 0, p.size / 2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
+      });
+
+      // Add a few more floating orbs occasionally
+      if (Math.random() > 0.9) {
+        particles.current.push({
+          x: Math.random() * canvas.width,
+          y: canvas.height + 10,
+          vx: (Math.random() - 0.5) * 2,
+          vy: -Math.random() * 3 - 2,
+          size: Math.random() * 15 + 10,
+          color: colors[Math.floor(Math.random() * colors.length)],
+          rotation: 0,
+          rotationSpeed: 0,
+          gravity: -0.02,
+          drag: 1,
+          type: 'circle'
+        });
+      }
+
+      // Remove off-screen particles
+      particles.current = particles.current.filter(p => p.y < canvas.height + 100);
+
+      animationFrame = requestAnimationFrame(animate);
+    };
+
+    animate();
+
+    return () => {
+      window.removeEventListener('resize', resize);
+      cancelAnimationFrame(animationFrame);
+    };
+  }, [active]);
+
+  if (!active) return null;
+
+  return (
+    <canvas 
+      ref={canvasRef} 
+      className="fixed inset-0 pointer-events-none z-[45]"
+    />
+  );
+};
+
 const VisualTimer: React.FC<{ seconds: number; best: number | null }> = ({ seconds, best }) => {
   const radius = 22;
   const circumference = 2 * Math.PI * radius;
@@ -485,6 +594,9 @@ const App: React.FC = () => {
 
   return (
     <div className="flex flex-col h-screen max-w-2xl mx-auto p-4 md:p-6 overflow-hidden">
+      {/* Celebration Animation Canvas */}
+      <Celebration active={isWon} />
+
       {/* Header & Progress */}
       <div className="mb-6">
         <div className="flex justify-between items-end mb-2">
@@ -534,8 +646,13 @@ const App: React.FC = () => {
 
         <canvas 
           ref={canvasRef} 
-          className="w-full h-full max-w-full max-h-full"
+          className={`w-full h-full max-w-full max-h-full transition-all duration-500 ${isWon ? 'scale-90 opacity-40 blur-sm' : ''}`}
         />
+
+        {/* Victory Flash */}
+        {isWon && (
+          <div className="absolute inset-0 bg-white/10 animate-pulse pointer-events-none rounded-3xl" />
+        )}
 
         {/* Tilt Indicator Overlay */}
         {controlMode === 'tilt' && (
